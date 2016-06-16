@@ -16,7 +16,7 @@ use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
 
-class MakerLegacy
+class Maker
 {
     private $app;
 
@@ -53,7 +53,7 @@ class MakerLegacy
                 $id = $diffs[0];
             }
 
-            if ($form->get('maker')->isValid()) {
+            if ($form->isValid()) {
                 // 登録
                 $data = $form->getData();
 
@@ -100,91 +100,58 @@ class MakerLegacy
     }
 
 
-    public function onAdminProductEditAfter($event)
+    public function onAdminProductEditAfter()
     {
         $app = $this->app;
         if (!$app->isGranted('ROLE_ADMIN')) {
             return;
         }
-        if($event != null){
-            $Product = $event->getArgument('Product');
-            $id = $Product->getId();
-        }else{
-            $id = $app['request']->attributes->get('id');
-            $Product = $app['eccube.repository.product']->find($id);
-        }
+
+        $id = $app['request']->attributes->get('id');
+
+        $form = $app['form.factory']
+            ->createBuilder('admin_product')
+            ->getForm();
 
         $ProductMaker = $app['eccube.plugin.maker.repository.product_maker']->find($id);
+
         if (is_null($ProductMaker)) {
             $ProductMaker = new \Plugin\Maker\Entity\ProductMaker();
-        }
-        if (!$Product) {
-            throw new NotFoundHttpException();
-        }
-        $builder = $app['form.factory']
-            ->createBuilder('admin_product', $Product);
-        // 規格あり商品か
-        $has_class = $Product->hasProductClass();
-        // 規格あり商品の場合、規格関連情報をFormから除外
-        if ($has_class) {
-            $builder->remove('class');
-        }
-        $form = $builder->getForm();
-        // ファイルの登録
-        $images = array();
-        $ProductImages = $Product->getProductImage();
-        foreach ($ProductImages as $ProductImage) {
-            $images[] = $ProductImage->getFileName();
-        }
-        $form['images']->setData($images);
-        $categories = array();
-        $ProductCategories = $Product->getProductCategories();
-        foreach ($ProductCategories as $ProductCategory) {
-            /* @var $ProductCategory \Eccube\Entity\ProductCategory */
-            $categories[] = $ProductCategory->getCategory();
-        }
-        $form['Category']->setData($categories);
-
-        //from 3.0.10
-        if(version_compare('3.0.10', Constant::VERSION, '<=')){
-            $Tags = array();
-            $ProductTags = $Product->getProductTag();
-            foreach ($ProductTags as $ProductTag) {
-                $Tags[] = $ProductTag->getTag();
-            }
-            $form['Tag']->setData($Tags);
         }
 
         $form->get('maker')->setData($ProductMaker->getMaker());
 
+        $form->handleRequest($app['request']);
+
         if ('POST' === $app['request']->getMethod()) {
 
-            $form->handleRequest($app['request']);
-            if ($form->get('maker')->isValid()) {
+            if ($form->isValid()) {
+
                 $maker_id = $form->get('maker')->getData();
                 if ($maker_id) {
-                    // 登録・更新
+                // 登録・更新
                     $Maker = $app['eccube.plugin.maker.repository.maker']->find($maker_id);
-                    // ※setIdはなんだか違う気がする
+                // ※setIdはなんだか違う気がする
                     if ($id) {
                         $ProductMaker->setId($id);
                     }
+
                     $ProductMaker
                         ->setMakerUrl($form->get('maker_url')->getData())
                         ->setDelFlg(0)
                         ->setMaker($Maker);
-                    $app['orm.em']->persist($ProductMaker);
+                        $app['orm.em']->persist($ProductMaker);
                 } else {
-                    // 削除
-                    // ※setIdはなんだか違う気がする
+                // 削除
+                // ※setIdはなんだか違う気がする
                     $ProductMaker->setId($id);
                     $app['orm.em']->remove($ProductMaker);
                 }
+
                 $app['orm.em']->flush();
             }
         }
     }
-
 
     private function getHtml($request, $response, $id)
     {
